@@ -1,0 +1,15 @@
+program ConditionDemo
+
+set num score to 72
+
+when score is greater than 79
+    say "Grade A"
+otherwise
+    when score is greater than 59
+        say "Grade B"
+    otherwise
+        say "Grade C"
+    end when
+end when
+
+end program

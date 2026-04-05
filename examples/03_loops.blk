@@ -1,0 +1,13 @@
+program LoopDemo
+
+repeat 5 times
+    say "Repeat loop tick"
+end repeat
+
+set count to 5
+while count is greater than 0
+    say count
+    set count to count - 1
+end while
+
+end program

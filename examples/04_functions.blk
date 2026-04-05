@@ -1,0 +1,18 @@
+program FunctionDemo
+
+define square(num x)
+    set num result to x * x
+    give result
+end define
+
+define add(num a, num b)
+    give a + b
+end define
+
+set num s to call square(7)
+set num total to call add(11, 9)
+
+say s
+say total
+
+end program

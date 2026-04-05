@@ -1,0 +1,19 @@
+program HelloDemo
+
+set num age to 21
+set decimal gpa to 3.85
+set text name to "Rahim"
+
+set x to 42
+set pi to 3.14159
+set city to "Dhaka"
+
+say "Name"
+say name
+say "Age"
+say age
+say "GPA"
+say gpa
+say city
+
+end program

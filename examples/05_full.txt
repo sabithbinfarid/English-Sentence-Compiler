@@ -1,0 +1,8 @@
+Subject:
+Compiler Design
+Marks:
+85
+Result: PASS
+5! =
+120
+5.5

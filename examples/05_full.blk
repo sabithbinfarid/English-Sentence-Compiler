@@ -1,0 +1,34 @@
+program StudentReport
+
+define factorial(num n)
+    set num result to 1
+    set num i to 1
+    while i is less than n + 1
+        set result to result * i
+        set i to i + 1
+    end while
+    give result
+end define
+
+set num marks to 85
+set text subject to "Compiler Design"
+
+say "Subject:"
+say subject
+say "Marks:"
+say marks
+
+when marks is greater than 49 and not marks is less than 0
+    say "Result: PASS"
+otherwise
+    say "Result: FAIL"
+end when
+
+set num fact to call factorial(5)
+say "5! ="
+say fact
+
+set decimal mix to 2 + 3.5
+say mix
+
+end program

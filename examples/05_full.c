@@ -19,7 +19,7 @@ int main(void) {
     printf("%s\n", subject);
     printf("%s\n", "Marks:");
     printf("%d\n", marks);
-    if ((marks > 49 && !(marks < 0))) {
+    if ((marks > 49) && !(marks < 0)) {
         printf("%s\n", "Result: PASS");
     } else {
         printf("%s\n", "Result: FAIL");

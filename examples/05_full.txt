@@ -1,8 +1,72 @@
-Subject:
-Compiler Design
-Marks:
-85
-Result: PASS
-5! =
-120
-5.5
+=== Symbol Table (IR) ===
+Name                 Type         Scope               
+------------------------------------------------------------
+n                    TY_INT       factorial           
+result               TY_INT       factorial           
+i                    TY_INT       factorial           
+marks                TY_INT       global              
+subject              TY_TEXT      global              
+fact                 TY_INT       global              
+mix                  TY_FLOAT     global              
+
+=== Abstract Syntax Tree (AST) ===
+Program
+  Scope: global
+    |- [L3] DEFINE: Function definition begins => factorial
+  Scope: factorial
+    |- [L5] SET: Declare and init result as TY_INT => 1
+    |- [L6] SET: Declare and init i as TY_INT => 1
+    |- [L7] WHILE: Loop while condition => i < (n + 1)
+      |- [L8] SET: Assign to result => (result * i)
+      |- [L9] SET: Assign to i => (i + 1)
+    |- [L11] GIVE: Return from factorial => result
+    |- [L13] END_DEFINE: Function definition ends => factorial
+  Scope: global
+    |- [L14] SET: Declare and init marks as TY_INT => 85
+    |- [L16] SET: Declare and init subject as TY_TEXT => "Compiler Design"
+    |- [L17] SAY: Print text expression => "Subject:"
+    |- [L18] SAY: Print text expression => subject
+    |- [L19] SAY: Print text expression => "Marks:"
+    |- [L21] SAY: Print int expression => marks
+    |- [L22] WHEN: Conditional branch => (marks > 49) && !(marks < 0)
+      |- [L23] SAY: Print text expression => "Result: PASS"
+      |- [L25] SAY: Print text expression => "Result: FAIL"
+    |- [L28] SET: Declare and init fact as TY_INT => factorial(5)
+    |- [L29] SAY: Print text expression => "5! ="
+    |- [L31] SAY: Print int expression => fact
+    |- [L32] SET: Declare and init mix as TY_FLOAT => 5.5
+    |- [L34] SAY: Print float expression => mix
+
+=== Intermediate Code Generation (3AC) ===
+001: FUNC_BEGIN factorial                      -> 
+002: ASSIGN     1                              -> result
+003: ASSIGN     1                              -> i
+004: ADD        n, 1                           -> (n + 1)
+005: CMP_LT     i, (n + 1)                     -> i < (n + 1)
+006: WHILE      i < (n + 1)                    -> loop_body
+007: MUL        result, i                      -> (result * i)
+008: ASSIGN     (result * i)                   -> result
+009: ADD        i, 1                           -> (i + 1)
+010: ASSIGN     (i + 1)                        -> i
+011: RETURN     result                         -> factorial
+012: FUNC_END   factorial                      -> 
+013: ASSIGN     85                             -> marks
+014: ASSIGN     "Compiler Design"              -> subject
+015: PRINT      "Subject:"                     -> stdout
+016: PRINT      subject                        -> stdout
+017: PRINT      "Marks:"                       -> stdout
+018: PRINT      marks                          -> stdout
+019: CMP_GT     marks, 49                      -> marks > 49
+020: CMP_LT     marks, 0                       -> marks < 0
+021: NOT        marks < 0                      -> !(marks < 0)
+022: AND        marks > 49, !(marks < 0)       -> (marks > 49) && !(marks < 0)
+023: BRANCH     (marks > 49) && !(marks < 0)   -> then_block
+024: PRINT      "Result: PASS"                 -> stdout
+025: PRINT      "Result: FAIL"                 -> stdout
+026: CALL       factorial(5)                   -> factorial
+027: ASSIGN     factorial(5)                   -> fact
+028: PRINT      "5! ="                         -> stdout
+029: PRINT      fact                           -> stdout
+030: ASSIGN     5.5                            -> mix
+031: PRINT      mix                            -> stdout
+

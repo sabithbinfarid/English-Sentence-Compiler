@@ -1,5 +1,4 @@
 %{
-#include <ctype.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -58,6 +57,15 @@ typedef struct {
     size_t cap;
 } StrBuf;
 
+typedef struct {
+    char *stmt_type;
+    char *description;
+    char *code;
+    char *scope;
+    int line_num;
+    int depth;
+} ASTNode;
+
 static Symbol *symbols = NULL;
 static int sym_count = 0;
 static int sym_cap = 0;
@@ -65,6 +73,13 @@ static int sym_cap = 0;
 static Function *functions = NULL;
 static int fn_count = 0;
 static int fn_cap = 0;
+
+static ASTNode *ast_nodes = NULL;
+static int ast_count = 0;
+static int ast_cap = 0;
+
+static StrBuf ir_code_buf;
+static int ir_instr_no = 0;
 
 static char current_scope[256] = "global";
 static int repeat_counter = 0;
@@ -99,6 +114,7 @@ extern FILE *yyin;
 extern char *yytext;
 
 void yyerror(const char *msg);
+static void add_ir_operation(const char *op, const char *operands, const char *result);
 
 #define EXPR(v) ((Expr *)(v))
 #define ARGS(v) ((ArgList *)(v))
@@ -411,6 +427,7 @@ static Expr *build_numeric_bin(Expr *lhs, int op, Expr *rhs) {
     char *left_code;
     char *right_code;
     const char *op_text;
+    const char *ir_op;
 
     if (lhs->type == TY_TEXT || rhs->type == TY_TEXT) {
         semantic_error("Arithmetic operators are only valid for numeric values");
@@ -421,10 +438,19 @@ static Expr *build_numeric_bin(Expr *lhs, int op, Expr *rhs) {
         semantic_error("Incompatible numeric expression");
     }
 
-    if (op == OP_ADD) op_text = "+";
-    else if (op == OP_SUB) op_text = "-";
-    else if (op == OP_MUL) op_text = "*";
-    else op_text = "/";
+    if (op == OP_ADD) {
+        op_text = "+";
+        ir_op = "ADD";
+    } else if (op == OP_SUB) {
+        op_text = "-";
+        ir_op = "SUB";
+    } else if (op == OP_MUL) {
+        op_text = "*";
+        ir_op = "MUL";
+    } else {
+        op_text = "/";
+        ir_op = "DIV";
+    }
 
     if (lhs->is_const_numeric && rhs->is_const_numeric) {
         double v = 0.0;
@@ -450,7 +476,10 @@ static Expr *build_numeric_bin(Expr *lhs, int op, Expr *rhs) {
 
     {
         char *code = xprintf("(%s %s %s)", left_code, op_text, right_code);
+        char *operands = xprintf("%s, %s", left_code, right_code);
         Expr *out = expr_new(rt, code, 0, 0.0);
+        add_ir_operation(ir_op, operands, code);
+        free(operands);
         free(code);
         free(left_code);
         free(right_code);
@@ -460,13 +489,22 @@ static Expr *build_numeric_bin(Expr *lhs, int op, Expr *rhs) {
 
 static Expr *build_comparison(Expr *lhs, int rel, Expr *rhs) {
     if (lhs->type == TY_TEXT || rhs->type == TY_TEXT) {
+        char *code;
+        char *operands;
+        Expr *out;
         if (lhs->type != TY_TEXT || rhs->type != TY_TEXT) {
             semantic_error("Text comparison requires both operands to be text");
         }
         if (rel != REL_EQ) {
             semantic_error("Text supports only 'is equals' comparison");
         }
-        return expr_new(TY_INT, xprintf("strcmp(%s, %s) == 0", lhs->code, rhs->code), 0, 0.0);
+        code = xprintf("strcmp(%s, %s) == 0", lhs->code, rhs->code);
+        operands = xprintf("%s, %s", lhs->code, rhs->code);
+        add_ir_operation("CMP_EQ", operands, code);
+        out = expr_new(TY_INT, code, 0, 0.0);
+        free(code);
+        free(operands);
+        return out;
     }
 
     {
@@ -487,7 +525,10 @@ static Expr *build_comparison(Expr *lhs, int rel, Expr *rhs) {
         else code = xprintf("%s == %s", left_code, right_code);
 
         {
+            char *operands = xprintf("%s, %s", left_code, right_code);
             Expr *out = expr_new(TY_INT, code, 0, 0.0);
+            add_ir_operation(rel == REL_GT ? "CMP_GT" : (rel == REL_LT ? "CMP_LT" : "CMP_EQ"), operands, code);
+            free(operands);
             free(code);
             free(left_code);
             free(right_code);
@@ -497,8 +538,11 @@ static Expr *build_comparison(Expr *lhs, int rel, Expr *rhs) {
 }
 
 static Expr *build_logic(Expr *lhs, const char *op, Expr *rhs) {
-    char *code = xprintf("(%s %s %s)", lhs->code, op, rhs->code);
+    char *code = xprintf("(%s) %s %s", lhs->code, op, rhs->code);
+    char *operands = xprintf("%s, %s", lhs->code, rhs->code);
     Expr *out = expr_new(TY_INT, code, 0, 0.0);
+    add_ir_operation(strcmp(op, "&&") == 0 ? "AND" : "OR", operands, code);
+    free(operands);
     free(code);
     return out;
 }
@@ -506,6 +550,7 @@ static Expr *build_logic(Expr *lhs, const char *op, Expr *rhs) {
 static Expr *build_not(Expr *inner) {
     char *code = xprintf("!(%s)", inner->code);
     Expr *out = expr_new(TY_INT, code, 0, 0.0);
+    add_ir_operation("NOT", inner->code, code);
     free(code);
     return out;
 }
@@ -719,11 +764,19 @@ static Expr *build_call_expr(const char *name, ArgList *args) {
     sb_append(&sb, ")");
 
     out = expr_new(fn->return_type == TY_UNKNOWN ? TY_INT : fn->return_type, sb.buf, 0, 0.0);
+    add_ir_operation("CALL", sb.buf, name);
     sb_free(&sb);
     return out;
 }
 
 static void compiler_init(void) {
+    ast_count = 0;
+    ir_instr_no = 0;
+    if (ir_code_buf.buf) {
+        sb_free(&ir_code_buf);
+    }
+    sb_init(&ir_code_buf);
+
     sb_init(&fn_code);
     sb_init(&main_code);
     active_buf = &main_code;
@@ -781,39 +834,134 @@ static void write_output_c(void) {
     fclose(f);
 }
 
-static void print_symbol_table(void) {
+static void print_symbol_table_to(FILE *out) {
     int i;
-    printf("=== Symbol Table (IR) ===\n");
-    printf("%-20s %-12s %-20s\n", "Name", "Type", "Scope");
-    printf("------------------------------------------------------------\n");
+    fprintf(out, "=== Symbol Table (IR) ===\n");
+    fprintf(out, "%-20s %-12s %-20s\n", "Name", "Type", "Scope");
+    fprintf(out, "------------------------------------------------------------\n");
     for (i = 0; i < sym_count; ++i) {
-        printf("%-20s %-12s %-20s\n", symbols[i].name, type_name(symbols[i].type), symbols[i].scope);
+        fprintf(out, "%-20s %-12s %-20s\n", symbols[i].name, type_name(symbols[i].type), symbols[i].scope);
     }
+    fprintf(out, "\n");
+}
+
+static void print_symbol_table(void) {
+    print_symbol_table_to(stdout);
+}
+
+static void add_ast_node(const char *type, const char *desc, const char *code) {
+    ASTNode *temp;
+    if (ast_count == ast_cap) {
+        ast_cap = ast_cap ? ast_cap * 2 : 32;
+        temp = (ASTNode *)realloc(ast_nodes, (size_t)ast_cap * sizeof(ASTNode));
+        if (!temp) {
+            fprintf(stderr, "Out of memory for AST\n");
+            exit(1);
+        }
+        ast_nodes = temp;
+    }
+    ast_nodes[ast_count].stmt_type = xstrdup(type);
+    ast_nodes[ast_count].description = xstrdup(desc);
+    ast_nodes[ast_count].code = xstrdup(code ? code : "");
+    ast_nodes[ast_count].scope = xstrdup(current_scope);
+    ast_nodes[ast_count].line_num = line_num;
+    ast_nodes[ast_count].depth = indent_level > 0 ? indent_level - 1 : 0;
+    ast_count++;
+}
+
+static void add_ir_operation(const char *op, const char *operands, const char *result) {
+    ir_instr_no++;
+    sb_appendf(&ir_code_buf,
+               "%03d: %-10s %-30s -> %s\n",
+               ir_instr_no,
+               op ? op : "",
+               operands ? operands : "",
+               result ? result : "");
+}
+
+static void print_ast_to(FILE *out) {
+    int i;
+    int j;
+    const char *last_scope = NULL;
+
+    fprintf(out, "=== Abstract Syntax Tree (AST) ===\n");
+    fprintf(out, "Program\n");
+    for (i = 0; i < ast_count; ++i) {
+        if (!last_scope || strcmp(last_scope, ast_nodes[i].scope) != 0) {
+            fprintf(out, "  Scope: %s\n", ast_nodes[i].scope);
+            last_scope = ast_nodes[i].scope;
+        }
+
+        for (j = 0; j < ast_nodes[i].depth + 2; ++j) {
+            fprintf(out, "  ");
+        }
+        fprintf(out, "|- [L%d] %s: %s", ast_nodes[i].line_num, ast_nodes[i].stmt_type, ast_nodes[i].description);
+        if (ast_nodes[i].code[0] != '\0') {
+            fprintf(out, " => %s", ast_nodes[i].code);
+        }
+        fprintf(out, "\n");
+    }
+    fprintf(out, "\n");
+}
+
+static void print_ast(void) {
+    print_ast_to(stdout);
+}
+
+static void print_intermediate_code_to(FILE *out) {
+    fprintf(out, "=== Intermediate Code Generation (3AC) ===\n");
+    if (ir_instr_no > 0) {
+        fprintf(out, "%s", ir_code_buf.buf);
+    } else {
+        fprintf(out, "(No intermediate operations recorded)\n");
+    }
+    fprintf(out, "\n");
+}
+
+static void print_intermediate_code(void) {
+    print_intermediate_code_to(stdout);
+}
+
+static void write_analysis_report_file(void) {
+    FILE *f = fopen(output_text_path, "wb");
+    if (!f) {
+        fprintf(stderr, "Could not create analysis output file: %s\n", output_text_path);
+        exit(1);
+    }
+
+    print_symbol_table_to(f);
+    print_ast_to(f);
+    print_intermediate_code_to(f);
+    fclose(f);
+    printf("Analysis output saved to: %s\n", output_text_path);
 }
 
 static int run_generated_program(void) {
     char exe_path[1024];
     char cmd[4096];
+    const char *redir = show_ir_flag ? ">>" : ">";
     int rc;
 
 #ifdef _WIN32
     replace_extension(output_path, ".out.exe", exe_path, sizeof(exe_path));
     snprintf(cmd,
              sizeof(cmd),
-             "gcc -w -o \"%s\" \"%s\" && \"%s\" > \"%s\" && type \"%s\"",
+             "gcc -w -o \"%s\" \"%s\" && \"%s\" %s \"%s\" && type \"%s\"",
              exe_path,
              output_path,
              exe_path,
+             redir,
              output_text_path,
              output_text_path);
 #else
     replace_extension(output_path, ".out", exe_path, sizeof(exe_path));
     snprintf(cmd,
              sizeof(cmd),
-             "gcc -w -o \"%s\" \"%s\" && \"%s\" > \"%s\" && cat \"%s\"",
+             "gcc -w -o \"%s\" \"%s\" && \"%s\" %s \"%s\" && cat \"%s\"",
              exe_path,
              output_path,
              exe_path,
+             redir,
              output_text_path,
              output_text_path);
 #endif
@@ -910,7 +1058,7 @@ static const char *current_repeat_idx(void) {
 
 %type <ival> type_spec
 %type <ptr> expr term factor primary
-%type <ptr> condition cond_or cond_and cond_not cond_atom comparison
+%type <ptr> cond_or cond_and cond_not cond_atom comparison
 %type <ptr> call_expr arg_list arg_list_opt
 
 %start source
@@ -936,6 +1084,8 @@ define_list
 define_stmt
     : DEFINE IDENTIFIER LPAREN
       {
+          add_ast_node("DEFINE", "Function definition begins", $2);
+          add_ir_operation("FUNC_BEGIN", $2, "");
           begin_function_header($2);
       }
       param_list_opt RPAREN NEWLINE
@@ -944,6 +1094,8 @@ define_stmt
       }
             stmt_list END_DEFINE NEWLINE
       {
+          add_ast_node("END_DEFINE", "Function definition ends", current_scope);
+          add_ir_operation("FUNC_END", current_scope, "");
           finish_function_body();
       }
     ;
@@ -987,11 +1139,15 @@ set_stmt
           Symbol *local = sym_lookup_local($3, current_scope);
           Expr *rhs = EXPR($5);
           char *rhs_code;
+          char desc[256];
 
           if (!local) {
               sym_add($3, $2, current_scope);
               rhs_code = assignment_rhs_code($2, rhs, $3);
               emit_line("%s %s = %s;", ctype_name($2), $3, rhs_code);
+              snprintf(desc, sizeof(desc), "Declare and init %s as %s", $3, type_name($2));
+              add_ast_node("SET", desc, rhs->code);
+              add_ir_operation("ASSIGN", rhs->code, $3);
               free(rhs_code);
           } else {
               fprintf(stderr,
@@ -1001,6 +1157,9 @@ set_stmt
                       current_scope);
               rhs_code = assignment_rhs_code(local->type, rhs, $3);
               emit_line("%s = %s;", $3, rhs_code);
+              snprintf(desc, sizeof(desc), "Assign to %s", $3);
+              add_ast_node("SET", desc, rhs->code);
+              add_ir_operation("ASSIGN", rhs->code, $3);
               free(rhs_code);
           }
       }
@@ -1010,16 +1169,23 @@ set_stmt
           Expr *rhs = EXPR($4);
           char *rhs_code;
           int inferred;
+          char desc[256];
 
           if (!s) {
               inferred = (rhs->type == TY_UNKNOWN) ? TY_INT : rhs->type;
               sym_add($2, inferred, current_scope);
               rhs_code = assignment_rhs_code(inferred, rhs, $2);
               emit_line("%s %s = %s;", ctype_name(inferred), $2, rhs_code);
+              snprintf(desc, sizeof(desc), "Declare and init %s (inferred %s)", $2, type_name(inferred));
+              add_ast_node("SET", desc, rhs->code);
+              add_ir_operation("ASSIGN", rhs->code, $2);
               free(rhs_code);
           } else {
               rhs_code = assignment_rhs_code(s->type, rhs, $2);
               emit_line("%s = %s;", $2, rhs_code);
+              snprintf(desc, sizeof(desc), "Assign to %s", $2);
+              add_ast_node("SET", desc, rhs->code);
+              add_ir_operation("ASSIGN", rhs->code, $2);
               free(rhs_code);
           }
       }
@@ -1029,20 +1195,29 @@ say_stmt
     : SAY expr
       {
           Expr *e = EXPR($2);
+          char desc[256];
           if (e->type == TY_TEXT) {
               emit_line("printf(\"%%s\\n\", %s);", e->code);
+              snprintf(desc, sizeof(desc), "Print text expression");
           } else if (e->type == TY_FLOAT) {
               emit_line("printf(\"%%.4g\\n\", %s);", e->code);
+              snprintf(desc, sizeof(desc), "Print float expression");
           } else {
               emit_line("printf(\"%%d\\n\", %s);", e->code);
+              snprintf(desc, sizeof(desc), "Print int expression");
           }
+          add_ast_node("SAY", desc, e->code);
+          add_ir_operation("PRINT", e->code, "stdout");
       }
     ;
 
 when_stmt
-    : WHEN condition NEWLINE
+    : WHEN cond_or NEWLINE
       {
-          emit_line("if (%s) {", EXPR($2)->code);
+          Expr *cond = EXPR($2);
+          emit_line("if (%s) {", cond->code);
+          add_ast_node("WHEN", "Conditional branch", cond->code);
+          add_ir_operation("BRANCH", cond->code, "then_block");
           indent_level++;
       }
       stmt_list else_opt END_WHEN
@@ -1070,10 +1245,14 @@ repeat_stmt
           int id = ++repeat_counter;
           char idx[32];
           char *n_code = cast_code(n->type, TY_INT, n->code);
+          char desc[256];
 
           snprintf(idx, sizeof(idx), "__r%d", id);
           push_repeat_idx(idx);
           emit_line("for (int %s = 0; %s < %s; ++%s) {", idx, idx, n_code, idx);
+          snprintf(desc, sizeof(desc), "Loop %s times", n->code);
+          add_ast_node("REPEAT", desc, n_code);
+          add_ir_operation("LOOP", n_code, idx);
           free(n_code);
           indent_level++;
       }
@@ -1086,9 +1265,12 @@ repeat_stmt
     ;
 
 while_stmt
-    : WHILE condition NEWLINE
+    : WHILE cond_or NEWLINE
       {
-          emit_line("while (%s) {", EXPR($2)->code);
+          Expr *cond = EXPR($2);
+          emit_line("while (%s) {", cond->code);
+          add_ast_node("WHILE", "Loop while condition", cond->code);
+          add_ir_operation("WHILE", cond->code, "loop_body");
           indent_level++;
       }
       stmt_list END_WHILE
@@ -1102,18 +1284,24 @@ give_stmt
     : GIVE expr
       {
           Expr *e = EXPR($2);
+          char desc[256];
           if (!current_fn) {
               semantic_error("'give' is only valid inside function definitions");
           }
           merge_function_return(current_fn, e->type);
           emit_line("return %s;", e->code);
+          snprintf(desc, sizeof(desc), "Return from %s", current_fn ? current_fn->name : "?");
+          add_ast_node("GIVE", desc, e->code);
+          add_ir_operation("RETURN", e->code, current_fn ? current_fn->name : "");
       }
     ;
 
 call_stmt
     : call_expr
       {
-          emit_line("%s;", EXPR($1)->code);
+          Expr *call = EXPR($1);
+          emit_line("%s;", call->code);
+          add_ast_node("CALL", "Function call", call->code);
       }
     ;
 
@@ -1156,13 +1344,6 @@ type_spec
     | TEXT    { $$ = TY_TEXT; }
     ;
 
-condition
-        : cond_or
-            {
-                    $$ = $1;
-            }
-        ;
-
 cond_or
         : cond_or OR cond_and
             {
@@ -1201,7 +1382,7 @@ cond_atom
             {
                     $$ = $1;
             }
-        | LPAREN condition RPAREN
+    | LPAREN cond_or RPAREN
             {
                     $$ = $2;
             }
@@ -1346,6 +1527,9 @@ int main(int argc, char **argv) {
 
     if (show_ir_flag) {
         print_symbol_table();
+        print_ast();
+        print_intermediate_code();
+        write_analysis_report_file();
     }
 
     if (run_flag) {

@@ -5,9 +5,9 @@
 int factorial(int n) {
     int result = 1;
     int i = 1;
-    while (i < (n + 1)) {
-        result = (result * i);
-        i = (i + 1);
+    while (i < n + 1) {
+        result = result * i;
+        i = i + 1;
     }
     return result;
 }
@@ -19,7 +19,7 @@ int main(void) {
     printf("%s\n", subject);
     printf("%s\n", "Marks:");
     printf("%d\n", marks);
-    if ((marks > 49) && !(marks < 0)) {
+    if (marks > 49 && !(marks < 0)) {
         printf("%s\n", "Result: PASS");
     } else {
         printf("%s\n", "Result: FAIL");

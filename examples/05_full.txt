@@ -14,11 +14,11 @@ Program
   Scope: global
     |- [L3] DEFINE: Function definition begins => factorial
   Scope: factorial
-    |- [L5] SET: Declare and init result as TY_INT => 1
-    |- [L6] SET: Declare and init i as TY_INT => 1
-    |- [L7] WHILE: Loop while condition => i < (n + 1)
-      |- [L8] SET: Assign to result => (result * i)
-      |- [L9] SET: Assign to i => (i + 1)
+    |- [L5] SET: Declare and init result (inferred TY_INT) => 1
+    |- [L6] SET: Declare and init i (inferred TY_INT) => 1
+    |- [L7] WHILE: Loop while condition => i < n + 1
+      |- [L8] SET: Assign to result => result * i
+      |- [L9] SET: Assign to i => i + 1
     |- [L11] GIVE: Return from factorial => result
     |- [L13] END_DEFINE: Function definition ends => factorial
   Scope: global
@@ -28,7 +28,7 @@ Program
     |- [L18] SAY: Print text expression => subject
     |- [L19] SAY: Print text expression => "Marks:"
     |- [L21] SAY: Print int expression => marks
-    |- [L22] WHEN: Conditional branch => (marks > 49) && !(marks < 0)
+    |- [L22] WHEN: Conditional branch => marks > 49 && !(marks < 0)
       |- [L23] SAY: Print text expression => "Result: PASS"
       |- [L25] SAY: Print text expression => "Result: FAIL"
     |- [L28] SET: Declare and init fact as TY_INT => factorial(5)
@@ -41,13 +41,13 @@ Program
 001: FUNC_BEGIN factorial                      -> 
 002: ASSIGN     1                              -> result
 003: ASSIGN     1                              -> i
-004: ADD        n, 1                           -> (n + 1)
-005: CMP_LT     i, (n + 1)                     -> i < (n + 1)
-006: WHILE      i < (n + 1)                    -> loop_body
-007: MUL        result, i                      -> (result * i)
-008: ASSIGN     (result * i)                   -> result
-009: ADD        i, 1                           -> (i + 1)
-010: ASSIGN     (i + 1)                        -> i
+004: ADD        n, 1                           -> n + 1
+005: CMP_LT     i, n + 1                       -> i < n + 1
+006: WHILE      i < n + 1                      -> loop_body
+007: MUL        result, i                      -> result * i
+008: ASSIGN     result * i                     -> result
+009: ADD        i, 1                           -> i + 1
+010: ASSIGN     i + 1                          -> i
 011: RETURN     result                         -> factorial
 012: FUNC_END   factorial                      -> 
 013: ASSIGN     85                             -> marks
@@ -59,8 +59,8 @@ Program
 019: CMP_GT     marks, 49                      -> marks > 49
 020: CMP_LT     marks, 0                       -> marks < 0
 021: NOT        marks < 0                      -> !(marks < 0)
-022: AND        marks > 49, !(marks < 0)       -> (marks > 49) && !(marks < 0)
-023: BRANCH     (marks > 49) && !(marks < 0)   -> then_block
+022: AND        marks > 49, !(marks < 0)       -> marks > 49 && !(marks < 0)
+023: BRANCH     marks > 49 && !(marks < 0)     -> then_block
 024: PRINT      "Result: PASS"                 -> stdout
 025: PRINT      "Result: FAIL"                 -> stdout
 026: CALL       factorial(5)                   -> factorial
@@ -70,3 +70,11 @@ Program
 030: ASSIGN     5.5                            -> mix
 031: PRINT      mix                            -> stdout
 
+Subject:
+Compiler Design
+Marks:
+85
+Result: PASS
+5! =
+120
+5.5

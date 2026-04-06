@@ -475,7 +475,7 @@ static Expr *build_numeric_bin(Expr *lhs, int op, Expr *rhs) {
     right_code = cast_code(rhs->type, rt, rhs->code);
 
     {
-        char *code = xprintf("(%s %s %s)", left_code, op_text, right_code);
+        char *code = xprintf("%s %s %s", left_code, op_text, right_code);
         char *operands = xprintf("%s, %s", left_code, right_code);
         Expr *out = expr_new(rt, code, 0, 0.0);
         add_ir_operation(ir_op, operands, code);
@@ -538,7 +538,7 @@ static Expr *build_comparison(Expr *lhs, int rel, Expr *rhs) {
 }
 
 static Expr *build_logic(Expr *lhs, const char *op, Expr *rhs) {
-    char *code = xprintf("(%s) %s %s", lhs->code, op, rhs->code);
+    char *code = xprintf("%s %s %s", lhs->code, op, rhs->code);
     char *operands = xprintf("%s, %s", lhs->code, rhs->code);
     Expr *out = expr_new(TY_INT, code, 0, 0.0);
     add_ir_operation(strcmp(op, "&&") == 0 ? "AND" : "OR", operands, code);

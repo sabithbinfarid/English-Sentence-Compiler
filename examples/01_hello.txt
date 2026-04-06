@@ -1,3 +1,45 @@
+=== Symbol Table (IR) ===
+Name                 Type         Scope               
+------------------------------------------------------------
+age                  TY_INT       global              
+gpa                  TY_FLOAT     global              
+name                 TY_TEXT      global              
+x                    TY_INT       global              
+pi                   TY_FLOAT     global              
+city                 TY_TEXT      global              
+
+=== Abstract Syntax Tree (AST) ===
+Program
+  Scope: global
+    |- [L4] SET: Declare and init age as TY_INT => 21
+    |- [L5] SET: Declare and init gpa as TY_FLOAT => 3.85
+    |- [L7] SET: Declare and init name as TY_TEXT => "Rahim"
+    |- [L8] SET: Declare and init x (inferred TY_INT) => 42
+    |- [L9] SET: Declare and init pi (inferred TY_FLOAT) => 3.14159
+    |- [L11] SET: Declare and init city (inferred TY_TEXT) => "Dhaka"
+    |- [L12] SAY: Print text expression => "Name"
+    |- [L13] SAY: Print text expression => name
+    |- [L14] SAY: Print text expression => "Age"
+    |- [L15] SAY: Print int expression => age
+    |- [L16] SAY: Print text expression => "GPA"
+    |- [L17] SAY: Print float expression => gpa
+    |- [L19] SAY: Print text expression => city
+
+=== Intermediate Code Generation (3AC) ===
+001: ASSIGN     21                             -> age
+002: ASSIGN     3.85                           -> gpa
+003: ASSIGN     "Rahim"                        -> name
+004: ASSIGN     42                             -> x
+005: ASSIGN     3.14159                        -> pi
+006: ASSIGN     "Dhaka"                        -> city
+007: PRINT      "Name"                         -> stdout
+008: PRINT      name                           -> stdout
+009: PRINT      "Age"                          -> stdout
+010: PRINT      age                            -> stdout
+011: PRINT      "GPA"                          -> stdout
+012: PRINT      gpa                            -> stdout
+013: PRINT      city                           -> stdout
+
 Name
 Rahim
 Age
